@@ -23,10 +23,8 @@
         <td is="coral-table-cell">
             <pre data-sly-test.hasMessage="${language.toLanguageTag in properties}">${properties[language.toLanguageTag]}</pre>
             <sly data-sly-test="${!hasMessage}">
-                <coral-icon icon="dataUnavailable"></coral-icon>
-                <coral-tooltip within="#key-list" variant="info" delay="0" target="_prev">
-                    <p>No translation for key ${properties.escapedKey} in language ${language.toLanguageTag}</p>
-                </coral-tooltip>
+                <span aria-hidden="true" title="No translation in language ${language.toLanguageTag}">&ndash;</span>
+                <span class="u-coral-screenReaderOnly">No translation</span>
             </sly>
         </td>
     </sly>
