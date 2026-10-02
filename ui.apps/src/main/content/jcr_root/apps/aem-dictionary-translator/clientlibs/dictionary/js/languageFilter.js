@@ -17,6 +17,12 @@
         Coral.commons.ready(select, function() {
             select.labelled = "Shown languages";
             select.values = getSelectedLanguages();
+            var labels = select.selectedItems.map(function(item) {
+                return item.content.textContent.trim();
+            });
+            if (labels.length) {
+                select.placeholder = labels.join(", ");
+            }
         });
     });
 

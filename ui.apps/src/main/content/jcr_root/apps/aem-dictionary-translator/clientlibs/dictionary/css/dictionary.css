@@ -5,3 +5,7 @@
 .icon--warning {
     color: red;
 }
+
+.dictionary-translator-language-filter > coral-taglist {
+    display: none !important;
+}
