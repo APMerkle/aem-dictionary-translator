@@ -41,6 +41,17 @@
                 </create-key>
             </primary>
             <secondary jcr:primaryType="nt:unstructured">
+                <languages
+                        jcr:primaryType="nt:unstructured"
+                        sling:resourceType="granite/ui/components/coral/foundation/form/select"
+                        granite:class="dictionary-translator-language-filter"
+                        multiple="{Boolean}true"
+                        emptyText="Filter languages">
+                    <datasource
+                            jcr:primaryType="nt:unstructured"
+                            sling:resourceType="aem-dictionary-translator/datasource/dictionary-language"
+                            hideNonDictionaryLanguages="{Boolean}true"/>
+                </languages>
                 <search
                         jcr:primaryType="nt:unstructured"
                         sling:resourceType="granite/ui/components/coral/foundation/form/textfield"
@@ -105,7 +116,7 @@
                     selectionMode="row"
                     limit="40"
                     sortMode="remote"
-                    src="/apps/aem-dictionary-translator/content/dictionaries/message-entries/jcr:content/views/list{.offset,limit}.html${requestPathInfo.suffix}?q=${empty param.q ? '' : granite:encodeURIComponent(param.q)}{&amp;sortName,sortDir}"
+                    src="/apps/aem-dictionary-translator/content/dictionaries/message-entries/jcr:content/views/list{.offset,limit}.html${requestPathInfo.suffix}?q=${empty param.q ? '' : granite:encodeURIComponent(param.q)}&amp;languages=${empty param.languages ? '' : granite:encodeURIComponent(param.languages)}{&amp;sortName,sortDir}"
                     path="${requestPathInfo.suffix}">
                 <datasource
                         jcr:primaryType="nt:unstructured"

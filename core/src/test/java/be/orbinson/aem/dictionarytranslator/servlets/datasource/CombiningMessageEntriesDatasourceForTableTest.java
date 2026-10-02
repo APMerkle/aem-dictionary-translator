@@ -173,10 +173,48 @@ class CombiningMessageEntriesDatasourceForTableTest {
     }
 
     private DataSource getListDataSourceForQuery(String query) throws ServletException, IOException {
-        context.request().setResource(new SyntheticResource(context.resourceResolver(), "/some/path", "artificial test resource"));
-        context.request().setParameterMap(Map.of(CombiningMessageEntriesDatasourceForTable.PARAMETER_QUERY, query));
+        return getDataSource("/some/path", Map.of(CombiningMessageEntriesDatasourceForTable.PARAMETER_QUERY, query));
+    }
+
+    private DataSource getDataSource(String resourcePath, Map<String, Object> parameters) throws ServletException, IOException {
+        context.request().setResource(new SyntheticResource(context.resourceResolver(), resourcePath, "artificial test resource"));
+        context.request().setParameterMap(parameters);
         servlet.doGet(context.request(), context.response());
         return (DataSource) context.request().getAttribute(DataSource.class.getName());
+    }
+
+    @Test
+    void testColumnDataSourceFilteredByLanguage() throws ServletException, IOException {
+        DataSource dataSource = getDataSource("/some/path/columnsdatasource", Map.of(CombiningMessageEntriesDatasourceForTable.PARAMETER_LANGUAGES, "nl-BE"));
+        assertDataSourceEquals(dataSource, CombiningMessageEntriesDatasourceForTable.getColumn(context.resourceResolver(), "select", true, Optional.empty()),
+                CombiningMessageEntriesDatasourceForTable.getColumn(context.resourceResolver(), "jcr:title", "Key", Optional.of("Key")),
+                CombiningMessageEntriesDatasourceForTable.getColumn(context.resourceResolver(), "jcr:title", "Validation", Optional.of("Validation")),
+                CombiningMessageEntriesDatasourceForTable.getColumn(context.resourceResolver(), "jcr:title", "nl-BE", Optional.of("nl-BE")));
+    }
+
+    @Test
+    void testColumnDataSourceIgnoresUnknownLanguage() throws ServletException, IOException {
+        DataSource dataSource = getDataSource("/some/path/columnsdatasource", Map.of(CombiningMessageEntriesDatasourceForTable.PARAMETER_LANGUAGES, "xx"));
+        assertEquals(5, IteratorUtils.toList(dataSource.iterator()).size());
+    }
+
+    @Test
+    void testListDataSourceFilteredByLanguageKeepsAllKeys() throws ServletException, IOException {
+        List<Resource> unfiltered = IteratorUtils.toList(getDataSource("/some/path", Map.of()).iterator());
+        List<Resource> filtered = IteratorUtils.toList(getDataSource("/some/path", Map.of(CombiningMessageEntriesDatasourceForTable.PARAMETER_LANGUAGES, "en")).iterator());
+        assertEquals(unfiltered.size(), filtered.size());
+        for (Resource resource : filtered) {
+            assertArrayEquals(new Locale[] { Locale.ENGLISH }, resource.getValueMap().get(CombiningMessageEntryResourceProvider.LANGUAGES, Locale[].class));
+            assertEquals(CombiningMessageEntryResourceProvider.RESOURCE_TYPE, resource.getResourceType());
+        }
+    }
+
+    @Test
+    void testListDataSourceSearchOnlyMatchesShownLanguages() throws ServletException, IOException {
+        // "Kers" is only the Dutch translation of "cherry"
+        assertDataSourceEquals(getDataSource("/some/path", Map.of(
+                CombiningMessageEntriesDatasourceForTable.PARAMETER_QUERY, "kers",
+                CombiningMessageEntriesDatasourceForTable.PARAMETER_LANGUAGES, "en")));
     }
 
     @Test

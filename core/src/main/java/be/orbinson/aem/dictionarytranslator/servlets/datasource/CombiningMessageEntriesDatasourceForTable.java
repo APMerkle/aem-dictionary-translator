@@ -1,11 +1,14 @@
 package be.orbinson.aem.dictionarytranslator.servlets.datasource;
 
 import java.io.IOException;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.SortedSet;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -58,6 +61,8 @@ public class CombiningMessageEntriesDatasourceForTable extends SortedAndPaginate
 
     static final String PARAMETER_QUERY = "q";
 
+    static final String PARAMETER_LANGUAGES = "languages";
+
     private final DictionaryService dictionaryService;
 
     private final CombiningMessageEntryResourceProvider combiningMessageEntryResourceProvider;
@@ -96,27 +101,52 @@ public class CombiningMessageEntriesDatasourceForTable extends SortedAndPaginate
         return new ValueMapResource(resourceResolver, "", "", valueMap);
     }
 
-    private static void setDataSource(ResourceResolver resourceResolver, Collection<Resource> resourceList, String dictionaryPath, Collection<String> keys) throws DictionaryException {
+    private static void setDataSource(ResourceResolver resourceResolver, Collection<Resource> resourceList, String dictionaryPath, Collection<String> keys, Optional<Set<Locale>> shownLanguages) throws DictionaryException {
         for (String key : keys) {
             // the escaping of the key is necessary as it may contain "/" which has a special meaning (even outside the JCR provider)
             String path = CombiningMessageEntryResourceProvider.createPath(dictionaryPath, key);
-            // use the resource returned by the CombiningMessageEntryResourceProvider as is
             Resource keyResource = resourceResolver.getResource(path);
             if (keyResource != null) {
-                resourceList.add(keyResource);
+                resourceList.add(shownLanguages.isPresent() ? withLanguages(keyResource, shownLanguages.get()) : keyResource);
             } else {
                 throw new IllegalStateException("Could not get resource for path: '" + path + "'.");
             }
         }
     }
 
+    /**
+     * @return a copy of the combining message entry resource which only exposes the given languages
+     */
+    private static Resource withLanguages(Resource keyResource, Set<Locale> languages) {
+        ValueMap valueMap = keyResource.getValueMap();
+        Map<String, Object> properties = new HashMap<>(valueMap);
+        properties.put(CombiningMessageEntryResourceProvider.LANGUAGES, Arrays.stream(valueMap.get(CombiningMessageEntryResourceProvider.LANGUAGES, new Locale[0]))
+                .filter(languages::contains)
+                .toArray(Locale[]::new));
+        return new ValueMapResource(keyResource.getResourceResolver(), keyResource.getPath(), keyResource.getResourceType(), new ValueMapDecorator(properties));
+    }
+
+    /**
+     * @return the dictionaries whose language is listed in the comma-separated languages parameter, or all dictionaries if none of them is
+     */
+    private static Collection<Dictionary> getShownDictionaries(SlingHttpServletRequest request, Collection<Dictionary> dictionaries) {
+        String parameter = request.getParameter(PARAMETER_LANGUAGES);
+        if (parameter == null || parameter.isBlank()) {
+            return dictionaries;
+        }
+        Set<String> languageTags = Arrays.stream(parameter.split(",")).map(String::trim).collect(Collectors.toSet());
+        List<Dictionary> shown = dictionaries.stream().filter(d -> languageTags.contains(d.getLanguage().toLanguageTag())).collect(Collectors.toList());
+        return shown.isEmpty() ? dictionaries : shown;
+    }
+
     private void createDictionaryDataSource(@NotNull SlingHttpServletRequest request, @NotNull SlingHttpServletResponse response, ResourceResolver resourceResolver, String dictionaryPath, Collection<Resource> resourceList) throws DictionaryException, ServletException, IOException {
         Collection<Dictionary> dictionaries = dictionaryService.getDictionaries(resourceResolver, dictionaryPath);
+        Collection<Dictionary> shownDictionaries = getShownDictionaries(request, dictionaries);
         if ("columnsdatasource".equals(request.getResource().getName())) {
-            setColumnsDataSource(resourceResolver, resourceList, dictionaries.stream().map(Dictionary::getLanguage).collect(Collectors.toList()), LanguageDatasource.getAllAvailableLanguages(request, response));
+            setColumnsDataSource(resourceResolver, resourceList, shownDictionaries.stream().map(Dictionary::getLanguage).collect(Collectors.toList()), LanguageDatasource.getAllAvailableLanguages(request, response));
         } else {
             String query = getQuery(request);
-            // sort by key by default
+            // keys of all languages are listed, so missing translations in the shown languages remain visible
             Collection<String> keys = dictionaries.stream().flatMap(
                     d -> {
                         try {
@@ -127,10 +157,12 @@ public class CombiningMessageEntriesDatasourceForTable extends SortedAndPaginate
                         }
                     })
                     .distinct()
-                    .filter(key -> query.isEmpty() || matchesQuery(key, dictionaries, query))
+                    .filter(key -> query.isEmpty() || matchesQuery(key, shownDictionaries, query))
                     .sorted()
                     .collect(Collectors.toList());
-            setDataSource(resourceResolver, resourceList, dictionaryPath, keys);
+            Optional<Set<Locale>> shownLanguages = shownDictionaries == dictionaries ? Optional.empty()
+                    : Optional.of(shownDictionaries.stream().map(Dictionary::getLanguage).collect(Collectors.toSet()));
+            setDataSource(resourceResolver, resourceList, dictionaryPath, keys, shownLanguages);
         }
     }
 
